@@ -1,0 +1,7 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ include "jira-software.storageClass" . }}
+provisioner: kubernetes.io/efs-nfs
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain

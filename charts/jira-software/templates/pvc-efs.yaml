@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ include "jira-software.pvcEfs" . }}
+  labels:
+    {{- include "jira-software.labels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: 20Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ .Values.persistence.storageClass }}
+  nfs:
+    path: /
+    server: {{ .Values.efs.dns }}

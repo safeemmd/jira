@@ -1,0 +1,150 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "confluence-server.fullname" . }}
+  labels:
+    {{- include "confluence-server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "confluence-server.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "confluence-server.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- . | toYaml | trim | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if (include "confluence-server.createInitContainer" .) }}
+      initContainers:
+        {{- if .Values.postgresql.enabled }}
+        - name: init-postgres
+          image: postgres:9.6.11-alpine
+          imagePullPolicy: IfNotPresent
+          command: [
+            "sh",
+            "-c",
+            "until pg_isready -h {{ .Values.postgresql.fullnameOverride }} -p 5432 ; do echo waiting for {{ .Values.postgresql.fullnameOverride }}; sleep 5; done;"]
+        {{- end }}
+        {{- if .Values.caCerts }}
+        - name: ca-certs
+          image: adoptopenjdk:11-jdk-hotspot
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              cp -f ${JAVA_HOME}/lib/security/cacerts /var/atlassian/application-data/confluence/cacerts
+              for i in /var/atlassian/application-data/confluence/secrets/cas/* ; do
+                keytool -importcert -file ${i} -alias $(basename ${i}) \
+                  -keystore /var/atlassian/application-data/confluence/cacerts \
+                  -storepass changeit -trustcacerts -noprompt
+              done
+          volumeMounts:
+            - mountPath: /var/atlassian/application-data/confluence
+              name: {{ include "confluence-server.pvcHome" . }}
+            - mountPath: /var/atlassian/application-data/confluence/secrets/cas
+              name: confluence-cas
+          {{- with .Values.caCertsEnv }}
+          env:
+            {{- . | toYaml | trim | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+      {{- if .Values.schedulerName }}
+      schedulerName: {{ .Values.schedulerName | quote }}
+      {{- end }}
+      serviceAccountName: {{ include "confluence-server.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- if .Values.securityContext }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "confluence-server.fullname" . }}-cm
+          env:
+            - name: ATL_JDBC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "confluence-server.secretName" . }}
+                  key: {{ template "confluence-server.secretKey" . }}
+            - name: JVM_SUPPORT_RECOMMENDED_ARGS
+              value: "{{ default "" .Values.extraEnv }}\
+                {{ if .Values.caCerts }} -Djavax.net.ssl.trustStore=/var/atlassian/application-data/confluence/cacerts {{ end }}"
+          ports:
+            - name: http
+              containerPort: 8090
+              protocol: TCP
+            - name: synchrony
+              containerPort: 8091
+              protocol: TCP
+          {{- if .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - mountPath: /var/atlassian/application-data/confluence
+              name: {{ include "confluence-server.pvcHome" . }}
+            {{- if .Values.mountAttachments.enabled }}
+            - mountPath: /var/atlassian/application-data/confluence/attachments
+              name: {{ include "confluence-server.pvcAttachments" . }}
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- include "confluence-server.tplValue" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
+            {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: {{ include "confluence-server.pvcHome" . }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "confluence-server.pvcHome" .) }}
+        {{- else }}
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.mountAttachments.enabled }}
+        - name: {{ include "confluence-server.pvcAttachments" . }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.mountAttachments.existingClaim | default (include "confluence-server.pvcAttachments" .) }}
+        {{- end }}
+        {{- if .Values.caCerts }}
+        - name: confluence-cas
+          secret:
+            secretName: {{ .Values.caCerts.secret }}
+        {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- include "confluence-server.tplValue" (dict "value" .Values.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

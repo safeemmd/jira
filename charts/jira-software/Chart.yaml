@@ -1,0 +1,44 @@
+apiVersion: v2
+name: jira-software
+description: Issue tracker and agile project management platform
+
+# Application charts are a collection of templates that can be packaged into versioned archives
+# to be deployed.
+type: application
+
+# This is the chart version. This version number should be incremented each time you make changes
+# to the chart and its templates, including the app version.
+version: 1.0.0
+
+# This is the version number of the application being deployed. This version number should be
+# incremented each time you make changes to the application.
+appVersion: 8.12.0
+
+icon: https://mox.sh/assets/images/jira-logo.png
+
+dependencies:
+  - name: postgresql
+    version: 9.1
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+    tags:
+      - postgres
+
+keywords:
+- jira
+- agile
+- project management
+- issue tracking
+- bug tracking
+- application
+
+home: https://hub.docker.com/r/atlassian/jira-software
+
+sources:
+- https://helm.sh
+- https://helm.mox.sh
+- https://hub.docker.com/r/atlassian/jira-software
+
+maintainers:
+- name: jmox
+  email: jmox@pm.me
